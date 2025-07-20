@@ -1,10 +1,19 @@
 # igrid-dms-middleware-com
 
-A middleware component for the iGrid DMS system, written in Go, designed to streamline communication and integration between distributed modules and external applications.
-
 ## Overview
 
-`igrid-dms-middleware-com` serves as a bridge between the iGrid Distribution Management System (DMS) and other enterprise systems or services. Built with Go for performance and reliability, it provides a robust, scalable, and secure way to manage data exchange, event handling, and process orchestration within smart grid environments.
+This middleware and communication infrastructure facilitates seamless integration between various components of Smart Grid Distribution Management Systems. It normalizes, validates, and routes messages between different protocols commonly used in power distribution systems.
+
+## Features
+
+- **Multi-protocol Support**: Handles DNP3, Modbus, MQTT, and HTTP protocols  
+- **Protocol Translation**: Converts between different protocol formats transparently  
+- **Message Normalization**: Transforms protocol-specific data into a standardized format  
+- **Schema Validation**: Ensures data integrity through JSON schema validation  
+- **Flexible Routing**: Routes messages to appropriate destination systems  
+- **Modbus Server**: Can act as both client (polling) and server (receiving) for Modbus communications  
+- **Scalable Architecture**: Easily extensible to support additional protocols  
+
 
 ## Architecture Diagram
 
@@ -39,6 +48,29 @@ graph TD
     B1 -->|Protocol Translation| C3
 ```
 
+## Architecture
+
+```text
++----------------+       +-------------------+       +---------------------+
+|  Field Devices | <-->  | igrid-dms         | <-->  | Management Systems  |
+|                |       | middleware        |       |                     |
++----------------+       +-------------------+       +---------------------+
+                                 |
+            +--------------------+--------------------+
+            |                                         |
+       +---------+                               +--------+
+       | Adapters|                               |  Core  |
+       +---------+                               +--------+
+            |-----------------------------------------|                      
+    +---------------+         |          +----------------------+
+    |      DNP3     |         |          |      Modbus          |
+    +---------------+         |          +----------------------+
+                              |
+                              |
+                    +-----------------+                          MQTT              |                                   
+                    +-----------------+
+
+
 This diagram represents a more conceptual view, focusing on the flow of data and commands between field devices, the middleware, and management systems, along with the internal components of the middleware.
 
 ## Key Features
@@ -56,6 +88,15 @@ This diagram represents a more conceptual view, focusing on the flow of data and
 - Automating workflows and data synchronization between grid components.
 - Real-time monitoring and alerting for grid events.
 - Custom protocol translation and data transformation.
+
+## Components
+
+
+- **Core:** Contains the router, normalizer, and validator
+- **Adapters:** Protocol-specific handlers for DNP3, Modbus, MQTT, and HTTP
+- **Models:** Message definitions and data structures
+- **Config:** Configuration handling for all components
+
 
 ## Prerequisites
 
@@ -78,13 +119,6 @@ This diagram represents a more conceptual view, focusing on the flow of data and
 
 ## Configuration
 
-All configuration is managed via environment variables. Key settings include:
-
-- `IGRID_DMS_API_URL`: Base URL for the iGrid DMS API.
-- `MIDDLEWARE_PORT`: Port on which the middleware will run.
-- `LOG_LEVEL`: Logging verbosity (e.g., info, debug, error).
-
-Refer to the `.env.example` file for a full list of configurable options.
 
 # configs/gateway.yaml
 logging:
@@ -130,6 +164,48 @@ Start the middleware service:
 ./igrid-middleware --modbus-server
 
 The middleware will initialize, connect to the configured iGrid DMS instance, and begin processing events and requests.
+
+## Message Flow
+
+1. Data is collected from field devices via Modbus/DNP3  
+2. Messages are normalized to a common format  
+3. Messages are validated against the defined schema  
+4. Valid messages are routed to appropriate destinations (MQTT/HTTP)  
+
+---
+
+## Protocol Support
+
+### Modbus
+- **Client mode**: Polls Modbus TCP devices at configured intervals  
+- **Server mode**: Accepts incoming Modbus TCP connections (with `--modbus-server` flag)  
+- **Register mapping**: Configure in `gateway.yaml`  
+
+### DNP3
+- **Outstation support**: Handles DNP3 data points  
+- **Integration with DSS** (Distribution System Simulator)  
+
+### MQTT
+- **Publishing**: Sends normalized data to configured MQTT topics  
+- **Quality of Service options**: QoS 0, 1, 2  
+- **TLS support** for secure connections  
+
+---
+
+## API Documentation
+
+### HTTP Endpoints
+- `/api/v1/data` – POST endpoint for submitting data  
+- `/api/v1/status` – GET endpoint for service status  
+
+{
+  "timestamp": "2023-07-20T15:04:05Z",
+  "deviceId": "device-001",
+  "protocol": "modbus",
+  "value": 120.5,
+  "unit": "V",
+  "quality": "GOOD"
+}
 
 ## Support
 
