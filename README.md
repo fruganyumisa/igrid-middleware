@@ -48,27 +48,6 @@ graph TD
     B1 -->|Protocol Translation| C3
 ```
 
-## Architecture
-
-```text
-+----------------+       +-------------------+       +---------------------+
-|  Field Devices | <-->  | igrid-dms         | <-->  | Management Systems  |
-|                |       | middleware        |       |                     |
-+----------------+       +-------------------+       +---------------------+
-                                 |
-            +--------------------+--------------------+
-            |                                         |
-       +---------+                               +--------+
-       | Adapters|                               |  Core  |
-       +---------+                               +--------+
-            |-----------------------------------------|                      
-    +---------------+         |          +----------------------+
-    |      DNP3     |         |          |      Modbus          |
-    +---------------+         |          +----------------------+
-                              |
-                              |
-                    +-----------------+                          MQTT              |                                   
-                    +-----------------+
 
 
 This diagram represents a more conceptual view, focusing on the flow of data and commands between field devices, the middleware, and management systems, along with the internal components of the middleware.
