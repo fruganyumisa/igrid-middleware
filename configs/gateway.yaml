@@ -1,0 +1,18 @@
+
+  logging:
+  level: "info"
+  
+
+  normalization:
+  modbus:
+    source_field: "register_value"
+    target_field: "value"
+    transform: "linear"
+  dnp3:
+    source_field: "point_value"
+    target_field: "value"
+    transform: "direct"
+
+  schema_path: "configs/message_schema.json"
+
+# ...rest of your existing config...
