@@ -10,47 +10,8 @@ A middleware component for the iGrid DMS system, written in Go, designed to stre
 
 Below is a high-level diagram illustrating the middleware infrastructure and protocol adapters:
 
-```mermaid
-flowchart LR
-    subgraph External Applications
-        ERP[ERP System]
-        GIS[GIS System]
-        SCADA[SCADA System]
-        CustomApp[Custom App]
-    end
 
-    subgraph Middleware
-        Adapter1[Protocol Adapter: REST]
-        Adapter2[Protocol Adapter: MQTT]
-        Adapter3[Protocol Adapter: SOAP]
-        Core[Middleware Core]
-    end
-
-    subgraph iGrid DMS
-        DMSAPI[iGrid DMS API]
-    end
-
-    ERP -- REST/HTTP --> Adapter1
-    GIS -- REST/HTTP --> Adapter1
-    SCADA -- MQTT --> Adapter2
-    CustomApp -- SOAP --> Adapter3
-
-    Adapter1 -- Internal Events --> Core
-    Adapter2 -- Internal Events --> Core
-    Adapter3 -- Internal Events --> Core
-
-    Core -- API Calls --> DMSAPI
-    DMSAPI -- Responses --> Core
-    Core -- Processed Data --> Adapter1
-    Core -- Processed Data --> Adapter2
-    Core -- Processed Data --> Adapter3
-```
-
-This architecture enables seamless communication between various external systems and the iGrid DMS through dedicated protocol adapters managed by the middleware core.
-
-## Alternative Architecture
-
-An alternative, more abstracted view of the architecture is as follows:
+A more abstracted view of the architecture is as follows:
 
 ```mermaid
 graph TD
