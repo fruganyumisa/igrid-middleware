@@ -100,6 +100,8 @@ This diagram represents a more conceptual view, focusing on the flow of data and
 
 
 # configs/gateway.yaml
+```yaml
+
 logging:
   level: "info"
 
@@ -128,6 +130,7 @@ normalization:
     target_field: "value"
 
 schema_path: "configs/message_schema.json"
+```
 
 ## Usage
 
@@ -177,6 +180,8 @@ The middleware will initialize, connect to the configured iGrid DMS instance, an
 - `/api/v1/data` – POST endpoint for submitting data  
 - `/api/v1/status` – GET endpoint for service status  
 
+
+```json
 {
   "timestamp": "2023-07-20T15:04:05Z",
   "deviceId": "device-001",
@@ -185,6 +190,7 @@ The middleware will initialize, connect to the configured iGrid DMS instance, an
   "unit": "V",
   "quality": "GOOD"
 }
+```
 
 ## Support
 
