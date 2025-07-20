@@ -93,8 +93,7 @@ This diagram represents a more conceptual view, focusing on the flow of data and
     cd igrid-dms-middleware-com
     go build -o igrid-dms-middleware-com
     ```
-3. **Configure environment variables:**  
-   Copy `.env.example` to `.env` and update the values as needed for your environment.
+
 
 ## Configuration
 
