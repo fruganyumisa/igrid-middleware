@@ -20,10 +20,16 @@ type MappingConfig struct {
 }
 
 func NewNormalizer(mappings map[string]MappingConfig, schemaPath string) (*Normalizer, error) {
-	schemaLoader := gojsonschema.NewReferenceLoader(schemaPath)
-	schema, err := gojsonschema.NewSchema(schemaLoader)
-	if err != nil {
-		return nil, fmt.Errorf("invalid schema: %w", err)
+	var schema *gojsonschema.Schema
+	var err error
+
+	// Only load schema if path is provided
+	if schemaPath != "" {
+		schemaLoader := gojsonschema.NewReferenceLoader("file://" + schemaPath)
+		schema, err = gojsonschema.NewSchema(schemaLoader)
+		if err != nil {
+			return nil, fmt.Errorf("invalid schema: %w", err)
+		}
 	}
 
 	return &Normalizer{
@@ -54,6 +60,25 @@ func (n *Normalizer) Normalize(protocol string, raw interface{}) ([]byte, error)
 }
 
 func (n *Normalizer) validate(data map[string]interface{}) error {
+	// Skip validation if no schema is loaded
+	if n.schema == nil {
+		return nil
+	}
+
 	// JSON schema validation implementation
-	// ...
+	documentLoader := gojsonschema.NewGoLoader(data)
+	result, err := n.schema.Validate(documentLoader)
+	if err != nil {
+		return fmt.Errorf("schema validation error: %w", err)
+	}
+
+	if !result.Valid() {
+		var errors []string
+		for _, desc := range result.Errors() {
+			errors = append(errors, desc.String())
+		}
+		return fmt.Errorf("validation failed: %v", errors)
+	}
+
+	return nil
 }

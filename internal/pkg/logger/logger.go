@@ -18,28 +18,55 @@ type ZapLogger struct {
 }
 
 func (z ZapLogger) Debug(msg string, fields ...interface{}) {
-	//TODO implement me
-	panic("implement me")
+	z.logger.Debug(msg, convertToZapFields(fields...)...)
 }
 
 func (z ZapLogger) Info(msg string, fields ...interface{}) {
-	//TODO implement me
-	panic("implement me")
+	z.logger.Info(msg, convertToZapFields(fields...)...)
 }
 
 func (z ZapLogger) Warn(msg string, fields ...interface{}) {
-	//TODO implement me
-	panic("implement me")
+	z.logger.Warn(msg, convertToZapFields(fields...)...)
 }
 
 func (z ZapLogger) Error(msg string, fields ...interface{}) {
-	//TODO implement me
-	panic("implement me")
+	z.logger.Error(msg, convertToZapFields(fields...)...)
 }
 
 func (z ZapLogger) Fatal(msg string, fields ...interface{}) {
-	//TODO implement me
-	panic("implement me")
+	z.logger.Fatal(msg, convertToZapFields(fields...)...)
+}
+
+// convertToZapFields converts interface{} fields to zap.Field
+func convertToZapFields(fields ...interface{}) []zap.Field {
+	zapFields := make([]zap.Field, 0, len(fields)/2)
+
+	for i := 0; i < len(fields)-1; i += 2 {
+		key, ok := fields[i].(string)
+		if !ok {
+			continue
+		}
+		value := fields[i+1]
+
+		switch v := value.(type) {
+		case string:
+			zapFields = append(zapFields, zap.String(key, v))
+		case int:
+			zapFields = append(zapFields, zap.Int(key, v))
+		case int64:
+			zapFields = append(zapFields, zap.Int64(key, v))
+		case float64:
+			zapFields = append(zapFields, zap.Float64(key, v))
+		case bool:
+			zapFields = append(zapFields, zap.Bool(key, v))
+		case error:
+			zapFields = append(zapFields, zap.Error(v))
+		default:
+			zapFields = append(zapFields, zap.Any(key, v))
+		}
+	}
+
+	return zapFields
 }
 
 func New(level string) Logger {

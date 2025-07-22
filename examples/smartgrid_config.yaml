@@ -1,0 +1,142 @@
+# Smart Grid IoT Middleware Configuration
+# Example configuration for various smart grid devices
+
+logging:
+  level: "info"
+  format: "json"
+
+# Modbus configuration for power quality meter
+modbus:
+  enabled: true
+  host: "192.168.1.100"
+  port: 502
+  timeout: 5000
+  retries: 3
+
+# DNP3 configuration for SCADA systems  
+dnp3:
+  enabled: true
+  host: "192.168.1.200"
+  port: 20000
+  timeout: 10000
+
+# MQTT configuration for data publishing
+mqtt:
+  enabled: true
+  brokerHost: "mqtt.smartgrid.local"
+  brokerPort: 1883
+  clientId: "igrid-middleware-001"
+  username: "grid_user"
+  password: "secure_password"
+  publishTopic: "smartgrid/measurements"
+  qos: 1
+
+# HTTP API configuration
+http:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+
+# Validation settings
+validation:
+  enabled: true
+  level: "strict"
+
+# Data normalization mappings
+normalization:
+  modbus:
+    json_path: "$.payload"
+    scaling: 1.0
+    data_type: "float"
+    unit: "various"
+    source_field: "raw_value"
+    target_field: "normalized_value"
+    transform: "linear"
+  
+  dnp3:
+    json_path: "$.measurements"
+    scaling: 1.0
+    data_type: "float"
+    unit: "various"
+    source_field: "point_value"
+    target_field: "measurement_value"
+    transform: "direct"
+
+# JSON schema path for message validation
+schema_path: "configs/message_schema.json"
+
+# Device-specific configurations
+devices:
+  power_meters:
+    - id: "pm_001"
+      type: "power_quality_meter"
+      location: "substation_north"
+      modbus_address: "192.168.1.100:502"
+      poll_interval: "1s"
+      registers:
+        voltage_phase_a: {address: 40001, quantity: 2, type: "float32"}
+        current_phase_a: {address: 40003, quantity: 2, type: "float32"}
+        active_power: {address: 40005, quantity: 2, type: "float32"}
+        frequency: {address: 40007, quantity: 1, type: "uint16"}
+        
+  energy_meters:
+    - id: "em_001"
+      type: "energy_meter"
+      location: "feeder_001"
+      modbus_address: "192.168.1.101:502"
+      poll_interval: "30s"
+      registers:
+        energy_import: {address: 4000, quantity: 2, type: "float32"}
+        energy_export: {address: 4002, quantity: 2, type: "float32"}
+        demand_current: {address: 4010, quantity: 2, type: "float32"}
+        
+  protective_relays:
+    - id: "pr_001"
+      type: "protective_relay"
+      location: "transmission_line_001"
+      modbus_address: "192.168.1.102:502"
+      poll_interval: "500ms"
+      registers:
+        protection_status: {address: 5000, quantity: 1, type: "uint16"}
+        fault_status: {address: 5001, quantity: 1, type: "uint16"}
+        trip_counter: {address: 5004, quantity: 1, type: "uint16"}
+        
+  weather_stations:
+    - id: "ws_001"
+      type: "weather_station"
+      location: "site_monitoring"
+      modbus_address: "192.168.1.103:502"
+      poll_interval: "60s"
+      registers:
+        temperature: {address: 6000, quantity: 1, type: "int16"}
+        humidity: {address: 6001, quantity: 1, type: "uint16"}
+        wind_speed: {address: 6002, quantity: 2, type: "float32"}
+        solar_irradiance: {address: 6005, quantity: 2, type: "float32"}
+        
+  battery_storage:
+    - id: "bess_001"
+      type: "battery_storage"
+      location: "energy_storage_facility"
+      modbus_address: "192.168.1.104:502"  
+      poll_interval: "2s"
+      registers:
+        state_of_charge: {address: 7000, quantity: 1, type: "uint16"}
+        battery_voltage: {address: 7002, quantity: 2, type: "float32"}
+        battery_current: {address: 7004, quantity: 2, type: "float32"}
+        inverter_power: {address: 7010, quantity: 2, type: "float32"}
+        operational_mode: {address: 7024, quantity: 1, type: "uint16"}
+
+# Alert and alarm thresholds
+thresholds:
+  voltage:
+    min: 207.0  # 90% of 230V
+    max: 253.0  # 110% of 230V
+  frequency:
+    min: 49.5   # Hz
+    max: 50.5   # Hz
+  temperature:
+    transformer_max: 80.0  # Celsius
+    ambient_max: 45.0
+  power_quality:
+    thd_voltage_max: 5.0   # % THD
+    thd_current_max: 20.0  # % THD

@@ -5,10 +5,23 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/grid-x/modbus"
+	"github.com/goburrow/modbus"
 	"github.com/streadway/amqp"
 	"go.uber.org/zap"
 )
+
+type Config struct {
+	Address      string
+	PollInterval time.Duration
+	Registers    []Register
+}
+
+type Register struct {
+	Name           string
+	Address        uint16
+	Quantity       uint16
+	TransformValue func([]byte) interface{}
+}
 
 type ModbusClient struct {
 	client   modbus.Client
@@ -31,6 +44,31 @@ func NewClient(cfg Config) (*ModbusClient, error) {
 	}, nil
 }
 
+func (m *ModbusClient) Publish(data []byte) {
+	if m.mqttChan == nil {
+		if m.logger != nil {
+			m.logger.Error("AMQP channel not initialized")
+		}
+		return
+	}
+	err := m.mqttChan.Publish(
+		"",       // exchange
+		"modbus", // routing key
+		false,    // mandatory
+		false,    // immediate
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        data,
+		},
+	)
+	if err != nil && m.logger != nil {
+		m.logger.Error("Failed to publish message", zap.Error(err))
+	}
+}
+
+// Message struct removed to avoid redeclaration error.
+// Import from server.go if needed.
+
 func (m *ModbusClient) PollRegisters(ctx context.Context) {
 	ticker := time.NewTicker(m.config.PollInterval)
 	defer ticker.Stop()
@@ -41,14 +79,14 @@ func (m *ModbusClient) PollRegisters(ctx context.Context) {
 			return
 		case <-ticker.C:
 			results := make(map[string]interface{})
-
 			for _, reg := range m.config.Registers {
 				val, err := m.client.ReadHoldingRegisters(reg.Address, reg.Quantity)
 				if err != nil {
-					m.logger.Error("Modbus read failed", zap.Error(err))
+					if m.logger != nil {
+						m.logger.Error("Modbus read failed", zap.Error(err))
+					}
 					continue
 				}
-
 				// Apply scaling and type conversion
 				results[reg.Name] = reg.TransformValue(val)
 			}
@@ -60,7 +98,7 @@ func (m *ModbusClient) PollRegisters(ctx context.Context) {
 			}
 
 			jsonData, _ := json.Marshal(msg)
-			m.publish(jsonData)
+			m.Publish(jsonData)
 		}
 	}
 }

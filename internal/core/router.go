@@ -39,7 +39,7 @@ func DefaultNormalizationConfig() map[string]MappingConfig {
 }
 
 func NewRouter(adapters []adapters.Adapter, log logger.Logger) *Router {
-	normalizer, err := NewNormalizer(DefaultNormalizationConfig(), "core-normalizer")
+	normalizer, err := NewNormalizer(DefaultNormalizationConfig(), "")
 	if err != nil {
 		log.Error("Failed to create normalizer", "error", err)
 		return nil

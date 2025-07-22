@@ -40,7 +40,7 @@ func NewPublisher(cfg config.Config) (*Publisher, error) {
 
 	// TLS configuration
 	if cfg.MQTT.TLSEnabled {
-		opts.SetTLSConfig(createTLSConfig(cfg.CertPath, cfg.KeyPath))
+		opts.SetTLSConfig(createTLSConfig(cfg.MQTT.CertPath, cfg.MQTT.KeyPath))
 	}
 
 	client := mqtt.NewClient(opts)
@@ -55,7 +55,7 @@ func NewPublisher(cfg config.Config) (*Publisher, error) {
 }
 
 func (p *Publisher) Publish(ctx context.Context, msg []byte) error {
-	topic := p.config.TopicPrefix + "/normalized"
+	topic := p.config.MQTT.TopicPrefix + "/normalized"
 	token := p.client.Publish(topic, 1, false, msg)
 
 	select {
