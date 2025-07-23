@@ -25,3 +25,7 @@ go.work.sum
 .env
 bin/
 scanner/
+# Configuration files
+configs/gateway.yaml
+# Test files
+test_modbus_client.go

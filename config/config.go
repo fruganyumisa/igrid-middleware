@@ -61,11 +61,36 @@ type DNP3Config struct {
 	Timeout int    `yaml:"timeout"`
 }
 
-// HTTPConfig struct definition added to fix undefined error.
+// HTTPConfig struct definition for HTTP client and DMS endpoint configuration
 type HTTPConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Host    string `yaml:"host"`
-	Port    int    `yaml:"port"`
+	Enabled     bool              `yaml:"enabled"`
+	Host        string            `yaml:"host"`
+	Port        int               `yaml:"port"`
+	DMS         DMSConfig         `yaml:"dms"`         // DMS endpoint configuration
+	Timeout     int               `yaml:"timeout"`     // HTTP timeout in seconds
+	Retries     int               `yaml:"retries"`     // Number of retry attempts
+	Headers     map[string]string `yaml:"headers"`     // Custom HTTP headers
+}
+
+// DMSConfig contains DMS (Distribution Management System) endpoint configuration
+type DMSConfig struct {
+	Enabled     bool              `yaml:"enabled"`     // Enable DMS integration
+	BaseURL     string            `yaml:"base_url"`    // DMS base URL (e.g., "https://dms.example.com")
+	Endpoint    string            `yaml:"endpoint"`    // Data endpoint (e.g., "/api/v1/devices/data")
+	Timeout     int               `yaml:"timeout"`     // Request timeout in seconds
+	AuthType    string            `yaml:"auth_type"`   // Authentication type: "bearer", "basic", "apikey", "none"
+	AuthToken   string            `yaml:"auth_token"`  // Bearer token or API key
+	Username    string            `yaml:"username"`    // For basic auth
+	Password    string            `yaml:"password"`    // For basic auth
+	Headers     map[string]string `yaml:"headers"`     // Additional headers
+	RetryConfig RetryConfig       `yaml:"retry"`       // Retry configuration
+}
+
+// RetryConfig defines retry behavior for HTTP requests
+type RetryConfig struct {
+	Enabled     bool `yaml:"enabled"`      // Enable retry mechanism
+	MaxAttempts int  `yaml:"max_attempts"` // Maximum retry attempts
+	DelayMs     int  `yaml:"delay_ms"`     // Delay between retries in milliseconds
 }
 
 // ValidationConfig struct definition added to fix undefined error.

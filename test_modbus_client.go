@@ -8,7 +8,7 @@ import (
 	"github.com/goburrow/modbus"
 )
 
-func main() {
+func main_test() {
 	fmt.Println("Testing Modbus server logging...")
 
 	// Create a Modbus TCP client

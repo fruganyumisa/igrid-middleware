@@ -1,18 +1,32 @@
 package modbus
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"time"
 
+	"github.com/fruganyumisa/igrid-middleware/internal/models"
 	"github.com/tbrandon/mbserver"
 )
 
+// DataCallback function type for handling processed smart grid data
+type DataCallback func(data *models.SmartGridData) error
+
+// HTTPCallback function type for sending data to HTTP endpoints
+type HTTPCallback func(endpoint string, payload *models.DMSPayload) error
+
 type ModbusServer struct {
-	server *mbserver.Server
-	addr   string
+	server        *mbserver.Server
+	addr          string
+	dataCallback  DataCallback      // Optional callback for processed data
+	httpCallback  HTTPCallback      // Optional callback for HTTP routing
+	registerCache map[uint16]uint16 // Cache for register values
+	deviceID      string            // Device identifier
 }
 
 type Message struct {
@@ -37,22 +51,229 @@ func (m *ModbusServer) OnWrite(addr uint16, data []byte) {
 	log.Printf("Modbus Write Operation: %s", string(logJSON))
 }
 
-func NewServer() (*ModbusServer, error) {
+func NewServer(deviceID string) (*ModbusServer, error) {
 	srv := mbserver.NewServer()
 
 	modbusServer := &ModbusServer{
-		server: srv,
-		addr:   ":5020",
+		server:        srv,
+		addr:          ":5020",
+		registerCache: make(map[uint16]uint16),
+		deviceID:      deviceID,
 	}
 
-	srv.HoldingRegisters[0] = 1234
-	srv.HoldingRegisters[1] = 5678
-	srv.HoldingRegisters[2] = 9012
-	srv.InputRegisters[0] = 3456
-	srv.InputRegisters[1] = 7890
+	// Initialize with sample smart grid data
+	srv.HoldingRegisters[0] = 26247  // voltage: 262.47V
+	srv.HoldingRegisters[1] = 14560  // current: 14.56A
+	srv.HoldingRegisters[2] = 15210  // active_power: 1521.0W
+	srv.HoldingRegisters[3] = 12280  // reactive_power: 122.80VAR
+	srv.HoldingRegisters[4] = 5034   // frequency: 50.34Hz
+	srv.HoldingRegisters[5] = 0      // breaker_status: open
+	srv.HoldingRegisters[6] = 22     // tap_position: 22
+	srv.HoldingRegisters[7] = 1443   // energy high word (23274.49 split)
+	srv.HoldingRegisters[8] = 61711  // energy low word
+	srv.HoldingRegisters[9] = 6370   // temperature: 63.70°C
+	srv.HoldingRegisters[10] = 6048  // humidity: 60.48%
+	srv.HoldingRegisters[11] = 0     // alarm: no alarm
+	srv.HoldingRegisters[12] = 26696 // timestamp high word (1753227100 split)
+	srv.HoldingRegisters[13] = 8300  // timestamp low word
+	srv.HoldingRegisters[14] = 0     // device register (will be set from deviceID)
+
+	// Set input registers with same data for testing
+	for i := 0; i < 15; i++ {
+		srv.InputRegisters[i] = srv.HoldingRegisters[i]
+	}
+
 	srv.Debug = true
 
 	return modbusServer, nil
+}
+
+// SetDataCallback sets a callback function for handling processed smart grid data
+func (m *ModbusServer) SetDataCallback(callback DataCallback) {
+	m.dataCallback = callback
+}
+
+// SetHTTPCallback sets a callback function for HTTP routing
+func (m *ModbusServer) SetHTTPCallback(callback HTTPCallback) {
+	m.httpCallback = callback
+}
+
+// SendToDMS sends data to DMS endpoint using HTTP callback
+func (m *ModbusServer) SendToDMS(payload *models.DMSPayload) error {
+	if m.httpCallback != nil {
+		return m.httpCallback("/api/v1/devices/data", payload)
+	}
+	log.Println("No HTTP callback configured - would send to DMS:", payload)
+	return nil
+}
+
+// SendHTTPRequest sends HTTP POST request to specified endpoint with JSON payload
+func SendHTTPRequest(endpoint string, payload interface{}, timeout time.Duration) error {
+	// Marshal payload to JSON
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	// Create HTTP client with timeout
+	client := &http.Client{Timeout: timeout}
+
+	// Create request
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+
+	log.Printf("🌐 Sending HTTP POST to %s: %s", endpoint, string(jsonData))
+
+	// Send request
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	log.Printf("📨 HTTP Response [%d]: %s", resp.StatusCode, string(respBody))
+
+	// Check status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// CreateHTTPCallback creates an HTTP callback function for a specific base URL
+func CreateHTTPCallback(baseURL string, timeout time.Duration) HTTPCallback {
+	return func(endpoint string, payload *models.DMSPayload) error {
+		fullURL := baseURL + endpoint
+		return SendHTTPRequest(fullURL, payload, timeout)
+	}
+}
+
+// CreateAdvancedHTTPCallback creates an HTTP callback with authentication and custom headers
+func CreateAdvancedHTTPCallback(baseURL string, timeout time.Duration, authType, authToken string, headers map[string]string) HTTPCallback {
+	return func(endpoint string, payload *models.DMSPayload) error {
+		fullURL := baseURL + endpoint
+		return SendAdvancedHTTPRequest(fullURL, payload, timeout, authType, authToken, headers)
+	}
+}
+
+// SendAdvancedHTTPRequest sends HTTP POST request with authentication and custom headers
+func SendAdvancedHTTPRequest(url string, payload interface{}, timeout time.Duration, authType, authToken string, customHeaders map[string]string) error {
+	// Marshal payload to JSON
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
+	
+	// Create HTTP client with timeout
+	client := &http.Client{Timeout: timeout}
+	
+	// Create request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	
+	// Set default headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "iGrid-Middleware/1.0")
+	
+	// Set custom headers
+	for key, value := range customHeaders {
+		req.Header.Set(key, value)
+	}
+	
+	// Set authentication
+	switch authType {
+	case "bearer":
+		if authToken != "" {
+			req.Header.Set("Authorization", "Bearer "+authToken)
+		}
+	case "apikey":
+		if authToken != "" {
+			req.Header.Set("X-API-Key", authToken)
+		}
+	case "basic":
+		// For basic auth, authToken should be "username:password"
+		if authToken != "" {
+			req.Header.Set("Authorization", "Basic "+authToken)
+		}
+	case "none":
+		// No authentication
+	default:
+		log.Printf("⚠️  Unknown auth type: %s", authType)
+	}
+	
+	log.Printf("🌐 Sending HTTP POST to %s with auth type: %s", url, authType)
+	log.Printf("📤 Payload: %s", string(jsonData))
+	
+	// Send request
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// Read response
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+	
+	log.Printf("📨 HTTP Response [%d]: %s", resp.StatusCode, string(respBody))
+	
+	// Check status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+	
+	return nil
+}
+
+// ProcessSmartGridData processes smart grid data and routes it appropriately
+func (m *ModbusServer) ProcessSmartGridData(data *models.SmartGridData) error {
+	// Log the extracted data
+	dataJSON, _ := json.Marshal(data)
+	log.Printf("📊 Processed Smart Grid Data: %s", string(dataJSON))
+
+	// Convert to DMS payload format
+	dmsPayload := &models.DMSPayload{
+		DeviceID:    data.DeviceID,
+		Voltage:     data.Voltage,
+		Current:     data.Current,
+		Temperature: data.Temperature,
+	}
+
+	// Log DMS payload
+	payloadJSON, _ := json.Marshal(dmsPayload)
+	log.Printf("🚀 DMS Payload: %s", string(payloadJSON))
+
+	// Call data callback if available
+	if m.dataCallback != nil {
+		if err := m.dataCallback(data); err != nil {
+			log.Printf("Data callback error: %v", err)
+		}
+	}
+
+	// Send to DMS
+	if err := m.SendToDMS(dmsPayload); err != nil {
+		log.Printf("Failed to send to DMS: %v", err)
+		return err
+	}
+
+	log.Printf("✅ Successfully processed smart grid data for device: %s", data.DeviceID)
+	return nil
 }
 
 func getFunctionName(code uint8) string {
@@ -74,36 +295,82 @@ func getFunctionName(code uint8) string {
 }
 
 // interpretRegisterValue provides human-readable interpretations of register values
-// based on common smart grid and industrial automation conventions
+// based on your specific smart grid data format
 func (m *ModbusServer) interpretRegisterValue(address uint16, value uint16) map[string]interface{} {
 	interpretations := make(map[string]interface{})
 
-	// Common smart grid register interpretations
+	// Smart grid specific register interpretations based on your data format
 	switch address {
-	case 0: // Often voltage
-		interpretations["voltage_v"] = float64(value) / 10.0    // Common scaling: value/10 = volts
-		interpretations["voltage_mv"] = float64(value)          // Alternative: millivolts
-		interpretations["percentage"] = float64(value) / 655.35 // 0-65535 as 0-100%
+	case 0: // Voltage register
+		voltage := float64(value) / 100.0 // Scale for voltage (e.g., 26247 → 262.47V)
+		interpretations["voltage"] = voltage
+		interpretations["unit"] = "V"
+		interpretations["description"] = "Line voltage measurement"
 
-	case 1: // Often current
-		interpretations["current_a"] = float64(value) / 100.0     // Common scaling: value/100 = amperes
-		interpretations["current_ma"] = float64(value)            // Alternative: milliamperes
-		interpretations["power_factor"] = float64(value) / 1000.0 // 0-1000 as 0.0-1.0
+	case 1: // Current register
+		current := float64(value) / 1000.0 // Scale for current (e.g., 14560 → 14.56A)
+		interpretations["current"] = current
+		interpretations["unit"] = "A"
+		interpretations["description"] = "Line current measurement"
 
-	case 2: // Often power
-		interpretations["power_w"] = float64(value)              // Watts
-		interpretations["power_kw"] = float64(value) / 1000.0    // Kilowatts
-		interpretations["frequency_hz"] = float64(value) / 100.0 // Frequency in Hz (scaled)
+	case 2: // Active power register
+		activePower := float64(value) / 10.0 // Scale for power (e.g., 15210 → 1521.0W)
+		interpretations["active_power"] = activePower
+		interpretations["unit"] = "W"
+		interpretations["description"] = "Active power consumption"
 
-	case 3: // Often energy
-		interpretations["energy_wh"] = float64(value)            // Watt-hours
-		interpretations["energy_kwh"] = float64(value) / 1000.0  // Kilowatt-hours
-		interpretations["temperature_c"] = float64(value) / 10.0 // Temperature in Celsius
+	case 3: // Reactive power register
+		reactivePower := float64(value) / 100.0 // Scale for reactive power
+		interpretations["reactive_power"] = reactivePower
+		interpretations["unit"] = "VAR"
+		interpretations["description"] = "Reactive power"
 
-	case 4: // Often frequency or temperature
-		interpretations["frequency_hz"] = float64(value) / 100.0 // Frequency: 5000 = 50.00 Hz
-		interpretations["temperature_c"] = float64(value) / 10.0 // Temperature: 250 = 25.0°C
-		interpretations["rpm"] = float64(value)                  // Motor RPM
+	case 4: // Frequency register
+		frequency := float64(value) / 100.0 // Scale for frequency (e.g., 5034 → 50.34Hz)
+		interpretations["frequency"] = frequency
+		interpretations["unit"] = "Hz"
+		interpretations["description"] = "Grid frequency"
+
+	case 5: // Breaker status register
+		interpretations["breaker_status"] = value
+		interpretations["breaker_open"] = value == 0
+		interpretations["breaker_closed"] = value == 1
+		interpretations["description"] = "Circuit breaker status"
+
+	case 6: // Tap position register
+		interpretations["tap_position"] = value
+		interpretations["description"] = "Transformer tap position"
+
+	case 7: // Energy register (high word)
+	case 8: // Energy register (low word) - combine for 32-bit energy value
+		interpretations["energy_raw"] = value
+		interpretations["description"] = "Energy measurement register"
+
+	case 9: // Temperature register
+		temperature := float64(value) / 100.0 // Scale for temperature (e.g., 6370 → 63.70°C)
+		interpretations["temperature"] = temperature
+		interpretations["unit"] = "°C"
+		interpretations["description"] = "Equipment temperature"
+
+	case 10: // Humidity register
+		humidity := float64(value) / 100.0 // Scale for humidity
+		interpretations["humidity"] = humidity
+		interpretations["unit"] = "%"
+		interpretations["description"] = "Relative humidity"
+
+	case 11: // Alarm register
+		interpretations["alarm"] = value
+		interpretations["alarm_active"] = value != 0
+		interpretations["description"] = "Alarm status register"
+
+	case 12: // Timestamp register (high word)
+	case 13: // Timestamp register (low word)
+		interpretations["timestamp_raw"] = value
+		interpretations["description"] = "Timestamp register"
+
+	case 14: // Device ID register
+		interpretations["device_raw"] = value
+		interpretations["description"] = "Device identifier"
 
 	default:
 		// Generic interpretations for any register
@@ -181,6 +448,112 @@ func (m *ModbusServer) decodeStatusBits(value uint16) map[string]interface{} {
 	return bits
 }
 
+// extractSmartGridData extracts and normalizes data from multiple register reads
+func (m *ModbusServer) extractSmartGridData(registers map[uint16]uint16, deviceID string, modbusAddr uint16) *models.SmartGridData {
+	data := &models.SmartGridData{
+		DeviceID:      deviceID,
+		ModbusAddress: modbusAddr,
+		ReceivedAt:    time.Now(),
+	}
+
+	// Extract and scale values based on register addresses
+	if val, exists := registers[0]; exists {
+		data.Voltage = float64(val) / 100.0 // Scale: 26247 → 262.47V
+	}
+
+	if val, exists := registers[1]; exists {
+		data.Current = float64(val) / 1000.0 // Scale: 14560 → 14.56A
+	}
+
+	if val, exists := registers[2]; exists {
+		data.ActivePower = float64(val) / 10.0 // Scale: 15210 → 1521.0W
+	}
+
+	if val, exists := registers[3]; exists {
+		data.ReactivePower = float64(val) / 100.0 // Scale reactive power
+	}
+
+	if val, exists := registers[4]; exists {
+		data.Frequency = float64(val) / 100.0 // Scale: 5034 → 50.34Hz
+	}
+
+	if val, exists := registers[5]; exists {
+		data.BreakerStatus = val
+	}
+
+	if val, exists := registers[6]; exists {
+		data.TapPosition = val
+	}
+
+	// Energy might be stored as 32-bit value across two registers
+	if highVal, existsHigh := registers[7]; existsHigh {
+		if lowVal, existsLow := registers[8]; existsLow {
+			energy32 := uint32(highVal)<<16 | uint32(lowVal)
+			data.Energy = float64(energy32) / 100.0 // Scale energy value
+		}
+	}
+
+	if val, exists := registers[9]; exists {
+		data.Temperature = float64(val) / 100.0 // Scale: 6370 → 63.70°C
+	}
+
+	if val, exists := registers[10]; exists {
+		data.Humidity = float64(val) / 100.0 // Scale humidity
+	}
+
+	if val, exists := registers[11]; exists {
+		data.Alarm = val
+	}
+
+	// Timestamp might be stored as 32-bit value across two registers
+	if highVal, existsHigh := registers[12]; existsHigh {
+		if lowVal, existsLow := registers[13]; existsLow {
+			timestamp32 := uint32(highVal)<<16 | uint32(lowVal)
+			data.Timestamp = int64(timestamp32)
+		}
+	}
+
+	return data
+}
+
+// processAndRouteData processes a complete set of register reads and routes to HTTP adapter
+func (m *ModbusServer) processAndRouteData(ctx context.Context, registers map[uint16]uint16) {
+	// Extract smart grid data from registers
+	smartGridData := m.extractSmartGridData(registers, m.deviceID, 0)
+
+	// Process and route the data using internal methods
+	if err := m.ProcessSmartGridData(smartGridData); err != nil {
+		log.Printf("Failed to process smart grid data: %v", err)
+	}
+}
+
+// updateRegisterCache updates the register cache and checks if we have a complete set
+func (m *ModbusServer) updateRegisterCache(startAddr uint16, values []uint16) {
+	// Update cache with new values
+	for i, value := range values {
+		m.registerCache[startAddr+uint16(i)] = value
+	}
+
+	// Check if we have a complete smart grid dataset (registers 0-14)
+	completeSet := make(map[uint16]uint16)
+	hasCompleteSet := true
+
+	for addr := uint16(0); addr <= 14; addr++ {
+		if value, exists := m.registerCache[addr]; exists {
+			completeSet[addr] = value
+		} else {
+			hasCompleteSet = false
+			break
+		}
+	}
+
+	// If we have complete set, process and route it
+	if hasCompleteSet {
+		log.Printf("Complete smart grid dataset detected, processing...")
+		go m.processAndRouteData(context.Background(), completeSet)
+	}
+}
+
 func (m *ModbusServer) Start(ctx context.Context, address string) error {
 	m.addr = address
 
@@ -240,6 +613,34 @@ func (m *ModbusServer) logAndHandle(funcCode uint8, originalHandler func(*mbserv
 					"target_registers": fmt.Sprintf("%d to %d", startAddr, startAddr+quantity-1),
 					"register_count":   quantity,
 				}
+
+				// For read operations, capture the register values after the operation
+				defer func() {
+					if funcCode == 3 || funcCode == 4 { // Holding or Input registers
+						registerValues := make([]uint16, quantity)
+						var sourceRegisters []uint16
+
+						if funcCode == 3 { // Holding registers
+							sourceRegisters = s.HoldingRegisters[:]
+						} else { // Input registers
+							sourceRegisters = s.InputRegisters[:]
+						}
+
+						// Extract the values that were read
+						for i := uint16(0); i < quantity; i++ {
+							if int(startAddr+i) < len(sourceRegisters) {
+								registerValues[i] = sourceRegisters[startAddr+i]
+							}
+						}
+
+						// Update register cache and check for complete dataset
+						m.updateRegisterCache(startAddr, registerValues)
+
+						// Log the actual values that were read
+						log.Printf("Read Register Values - Start: %d, Count: %d, Values: %v",
+							startAddr, quantity, registerValues)
+					}
+				}()
 			}
 		case 5, 6: // Write single operations
 			if len(data) >= 4 {

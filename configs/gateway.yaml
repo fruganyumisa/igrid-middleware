@@ -1,18 +1,89 @@
 
-  logging:
+logging:
   level: "info"
-  
+  format: "json"
 
-  normalization:
+# Modbus configuration for smart grid devices
+modbus:
+  enabled: true
+  host: "localhost"
+  port: 502
+  unitId: 1
+  timeout: 5000  # milliseconds
+  retries: 3
+
+# DNP3 configuration
+dnp3:
+  enabled: false
+  host: "localhost"
+  port: 20000
+  timeout: 5000
+
+# MQTT configuration
+mqtt:
+  enabled: false
+  brokerHost: "localhost"
+  brokerPort: 1883
+  clientId: "igrid-gateway"
+  username: ""
+  password: ""
+  publishTopic: "smartgrid/data"
+  qos: 1
+
+# HTTP and DMS configuration
+http:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+  timeout: 30
+  retries: 3
+  headers:
+    "User-Agent": "iGrid-Middleware/1.0"
+    "Accept": "application/json"
+  
+  # DMS (Distribution Management System) endpoint configuration
+  dms:
+    enabled: true
+    base_url: "http://161.97.125.42"  # Change to your actual DMS URL
+    endpoint: "/api/v1/iot/add/device/payload"   # DMS data ingestion endpoint
+    timeout: 30                        # Request timeout in seconds
+    auth_type: "none"                # Options: "bearer", "basic", "apikey", "none"
+    auth_token: "your-api-token-here"  # JWT token or API key
+    username: ""                       # For basic auth (if auth_type is "basic")
+    password: ""                       # For basic auth (if auth_type is "basic")
+    headers:
+      "Content-Type": "application/json"
+      "X-Source": "iGrid-Middleware"
+      "X-API-Key": "igrid-sgdss-key"
+      "X-API-Secret": "igrid-sgdss-2025-log-secret"
+    retry:
+      enabled: true
+      max_attempts: 3
+      delay_ms: 1000
+
+# Data validation configuration
+validation:
+  enabled: true
+  level: "strict"
+
+# Data normalization mappings
+normalization:
   modbus:
     source_field: "register_value"
     target_field: "value"
     transform: "linear"
+    json_path: "$.payload.modbus"
+    scaling: 1.0
+    data_type: "float"
+    unit: "V"
   dnp3:
     source_field: "point_value"
     target_field: "value"
     transform: "direct"
+    json_path: "$.payload.dnp3"
+    scaling: 1.0
+    data_type: "float"
+    unit: "A"
 
-  schema_path: "configs/message_schema.json"
-
-# ...rest of your existing config...
+# Schema validation file path
+schema_path: "configs/message_schema.json"
